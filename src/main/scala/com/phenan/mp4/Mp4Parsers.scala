@@ -55,9 +55,8 @@ object Mp4Parsers extends ByteParsers {
       trackReferenceTypeBoxCdsc(initialPosition, size)
     case 0x6d646961 =>  // 'mdia'
       pure(MediaBox())
-
-    //    case 0x66726565 => // 'free'
-//      ???
+    case 0x6d646864 =>  // 'mdhd'
+      fullBox(initialPosition, size, mediaHeaderBox)
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -146,13 +145,36 @@ object Mp4Parsers extends ByteParsers {
     height           <- u4
   } yield TrackHeaderBox(Unsigned(1), flags, creationTime, modificationTime, trackId, duration, layer, alternateGroup, volume, matrix.toArray, width, height)
 
-  private def trackReferenceTypeBoxHint(initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[TrackReferenceTypeBoxHint] = for {
+  private def trackReferenceTypeBoxHint (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[TrackReferenceTypeBoxHint] = for {
     trackIds <- u4.until(initialPosition + size)
   } yield TrackReferenceTypeBoxHint(trackIds)
 
-  private def trackReferenceTypeBoxCdsc(initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[TrackReferenceTypeBoxCdsc] = for {
+  private def trackReferenceTypeBoxCdsc (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[TrackReferenceTypeBoxCdsc] = for {
     trackIds <- u4.until(initialPosition + size)
   } yield TrackReferenceTypeBoxCdsc(trackIds)
+
+  private def mediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[MediaHeaderBox] = {
+    if (version == 1) mediaHeaderBoxVer1(initialPosition, size)
+    else mediaHeaderBoxVer0(initialPosition, size)
+  }
+
+  private def mediaHeaderBoxVer0 (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MediaHeaderBox] = for {
+    creationTime     <- u4
+    modificationTime <- u4
+    timeScale        <- u4
+    duration         <- u4
+    language         <- s2
+    _                <- s2           // pre_defined
+  } yield MediaHeaderBox(Unsigned(0), creationTime.toUnsignedLong, modificationTime.toUnsignedLong, timeScale, duration.toUnsignedLong, language)
+
+  private def mediaHeaderBoxVer1 (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MediaHeaderBox] = for {
+    creationTime     <- u8
+    modificationTime <- u8
+    timeScale        <- u4
+    duration         <- u8
+    language         <- s2
+    _                <- s2           // pre_defined
+  } yield MediaHeaderBox(Unsigned(1), creationTime, modificationTime, timeScale, duration, language)
 
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)

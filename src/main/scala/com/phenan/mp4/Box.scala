@@ -74,6 +74,16 @@ case class MediaBox () extends Box {
   override def toHumanReadableString: String = "MediaBox()"
 }
 
+// language code is actually padding (1 bit) + character (5 bit) * 3, but this class holds it as a short value (16 bit)
+case class MediaHeaderBox
+(version: UnsignedByte, creationTime: UnsignedLong, modificationTime: UnsignedLong,
+ timeScale: UnsignedInt, duration: UnsignedLong, language: Short) extends FullBox
+{
+  override def toHumanReadableString: String = {
+    s"MediaHeaderBox(version = $version, creationTime = $creationTime, modificationTime = $modificationTime, timeScale = $timeScale, duration = $duration, language = $language)"
+  }
+}
+
 case class UnknownBox (boxType: UnsignedInt, data: Array[Byte]) extends Box {
   override def toHumanReadableString: String = {
     s"UnknownBox(boxType = ${toIdentifierString(boxType)}($boxType), data = <byte array: ${data.length}bytes>)"
