@@ -35,17 +35,17 @@ object Mp4Parsers extends ByteParsers {
   }
 
   private def boxBody (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[Box] = boxType.underlying match {
-    case 0x66747970 => // 'ftyp'
+    case 0x66747970 =>  // 'ftyp'
       fileTypeBox(initialPosition, size)
-    case 0x6d6f6f76 => // 'moov'
+    case 0x6d6f6f76 =>  // 'moov'
       pure(MovieBox())
-    case 0x6d646174 => // 'mdat'
+    case 0x6d646174 =>  // 'mdat'
       mediaDataBox(initialPosition, size)
-    case 0x6d766864 => // 'mvhd'
+    case 0x6d766864 =>  // 'mvhd'
       fullBox(initialPosition, size, movieHeaderBox)
-    case 0x7472616b => // 'trak'
+    case 0x7472616b =>  // 'trak'
       pure(TrackBox())
-    case 0x746b6864 => // 'tkhd'
+    case 0x746b6864 =>  // 'tkhd'
       fullBox(initialPosition, size, trackHeaderBox)
     case 0x74726566 =>  // 'tref'
       pure(TrackReferenceBox())
@@ -57,6 +57,18 @@ object Mp4Parsers extends ByteParsers {
       pure(MediaBox())
     case 0x6d646864 =>  // 'mdhd'
       fullBox(initialPosition, size, mediaHeaderBox)
+    case 0x68646c72 =>  // 'hdlr'
+      fullBox(initialPosition, size, handlerBox)
+    case 0x6d696e66 =>  // 'minf'
+      pure(MediaInformationBox())
+    case 0x766d6864 =>  // 'vmhd'
+      fullBox(initialPosition, size, videoMediaHeaderBox)
+    case 0x736d6864 =>  // 'smhd'
+      fullBox(initialPosition, size, soundMediaHeaderBox)
+    case 0x686d6864 =>  // 'hmhd'
+      fullBox(initialPosition, size, hintMediaHeaderBox)
+    case 0x6e6d6864 =>  // 'nmhd'
+      fullBox(initialPosition, size, nullMediaHeaderBox)
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -175,6 +187,35 @@ object Mp4Parsers extends ByteParsers {
     language         <- s2
     _                <- s2           // pre_defined
   } yield MediaHeaderBox(Unsigned(1), creationTime, modificationTime, timeScale, duration, language)
+
+  private def handlerBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[HandlerBox] = for {
+    _           <- u4                // pre_defined
+    handlerType <- u4
+    _           <- u4.times(3)       // reserved
+    name        <- nullEndedString
+  } yield HandlerBox(version, handlerType, name)
+
+  private def videoMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[VideoMediaHeaderBox] = for {
+    graphicsMode <- u2
+    opColor      <- u2.times(3)
+  } yield VideoMediaHeaderBox(version, graphicsMode, opColor.toArray)
+
+  private def soundMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[SoundMediaHeaderBox] = for {
+    balance <- s2
+    _       <- u2   // reserved
+  } yield SoundMediaHeaderBox(version, balance)
+
+  private def hintMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[HintMediaHeaderBox] = for {
+    maxPDUSize <- u2
+    avgPDUSize <- u2
+    maxBitRate <- u4
+    avgBitRate <- u4
+    _          <- u4  // reserved
+  } yield HintMediaHeaderBox(version, maxPDUSize, avgPDUSize, maxBitRate, avgBitRate)
+
+  private def nullMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[NullMediaHeaderBox] = {
+    pure(NullMediaHeaderBox(version, flags))
+  }
 
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)

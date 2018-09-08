@@ -2,10 +2,12 @@ package com.phenan.util
 
 import java.io._
 
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
 class ByteReader private (in: DataInputStream) {
   def u1: Try[UnsignedByte] = read(Unsigned(1L), Unsigned(in.readByte()))
+  def u2: Try[UnsignedShort] = read(Unsigned(2L), Unsigned(in.readShort()))
   def u4: Try[UnsignedInt] = read(Unsigned(4L), Unsigned(in.readInt()))
   def u8: Try[UnsignedLong] = read(Unsigned(8L), Unsigned(in.readLong()))
 
@@ -16,6 +18,18 @@ class ByteReader private (in: DataInputStream) {
     // Note: Java only supports array size up to Int.MaxValue
     val bs = new Array[Byte](size.underlying.toInt)
     read(size, in.read(bs)).map(_ => bs)
+  }
+
+  def readNullEndedString: Try[String] = Try(readNullEndedString(ArrayBuffer.empty))
+
+  private def readNullEndedString(buf: ArrayBuffer[Byte]): String = {
+    val ch = in.readByte()
+    pos = pos + Unsigned(1L)
+    if (ch == '\0') new String(buf.toArray, "UTF-8")
+    else {
+      buf += ch
+      readNullEndedString(buf)
+    }
   }
 
   def readUntilEoF: Try[Array[Byte]] = {

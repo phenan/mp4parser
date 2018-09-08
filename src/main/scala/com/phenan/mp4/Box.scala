@@ -84,6 +84,40 @@ case class MediaHeaderBox
   }
 }
 
+case class HandlerBox (version: UnsignedByte, handlerType: UnsignedInt, name: String) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"HandlerBox(version = $version, handlerType = ${toIdentifierString(handlerType)}, name = $name)"
+  }
+}
+
+case class MediaInformationBox () extends Box {
+  override def toHumanReadableString: String = "MediaInformationBox()"
+}
+
+case class VideoMediaHeaderBox (version: UnsignedByte, graphicsMode: UnsignedShort, opColor: Array[UnsignedShort]) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"VideoMediaHeaderBox(version = $version, graphicsMode = $graphicsMode, opColor = { ${opColor(0)}, ${opColor(1)}, ${opColor(2)} })"
+  }
+}
+
+case class SoundMediaHeaderBox (version: UnsignedByte, balance: Short) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"SoundMediaHeaderBox(version = $version, balance = $balance)"
+  }
+}
+
+case class HintMediaHeaderBox (version: UnsignedByte, maxPDUSize: UnsignedShort, avgPDUSize: UnsignedShort, maxBitRate: UnsignedInt, avgBitRate: UnsignedInt) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"HintMediaHeaderBox(version = $version, maxPDUSize = $maxPDUSize, avgPDUSize = $avgPDUSize, maxBitRate = $maxBitRate, avgBitRate = $avgBitRate)"
+  }
+}
+
+case class NullMediaHeaderBox (version: UnsignedByte, flags: BitSet) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"NullMediaHeaderBox(version = $version, flags = ${BitSetUtil.toBitArrayString(flags)})"
+  }
+}
+
 case class UnknownBox (boxType: UnsignedInt, data: Array[Byte]) extends Box {
   override def toHumanReadableString: String = {
     s"UnknownBox(boxType = ${toIdentifierString(boxType)}($boxType), data = <byte array: ${data.length}bytes>)"

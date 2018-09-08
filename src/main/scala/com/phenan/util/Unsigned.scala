@@ -2,6 +2,7 @@ package com.phenan.util
 
 object Unsigned {
   def apply (byteValue: Byte): UnsignedByte = new UnsignedByte(byteValue)
+  def apply (shortValue: Short): UnsignedShort = new UnsignedShort(shortValue)
   def apply (intValue: Int): UnsignedInt = new UnsignedInt(intValue)
   def apply (longValue: Long): UnsignedLong = new UnsignedLong(longValue)
 }
@@ -12,6 +13,12 @@ class UnsignedByte (val underlying: Byte) extends AnyVal {
   def toInt: Int = java.lang.Byte.toUnsignedInt(underlying)
 
   def == (n: Int): Boolean = toInt == n
+}
+
+class UnsignedShort (val underlying: Short) extends AnyVal {
+  override def toString: String = toInt.toString
+
+  def toInt: Int = java.lang.Short.toUnsignedInt(underlying)
 }
 
 class UnsignedInt (val underlying: Int) extends AnyVal {
