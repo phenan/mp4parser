@@ -67,6 +67,10 @@ object Mp4Parsers extends ByteParsers {
       pure(DataInformationBox())
     case 0x64726566 =>  // 'dref'
       dataReferenceBoxBody
+    case 0x7374626c =>  // 'stbl'
+      pure(SampleTableBox())
+    case 0x73747473 =>  // 'stts'
+      timeToSampleBoxBody
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -164,9 +168,9 @@ object Mp4Parsers extends ByteParsers {
     _            <- u4  // reserved
   } yield HintMediaHeaderBox(version, maxPDUSize, avgPDUSize, maxBitRate, avgBitRate)
 
-  private def nullMediaHeaderBoxBody: ByteParser[NullMediaHeaderBox] = {
-    for ((version, flags) <- fullBoxHeader) yield NullMediaHeaderBox(version, flags)
-  }
+  private def nullMediaHeaderBoxBody: ByteParser[NullMediaHeaderBox] = for {
+    (version, flags) <- fullBoxHeader
+  } yield NullMediaHeaderBox(version, flags)
 
   private lazy val selfContainedFlag = Unsigned(0x000001)
 
@@ -196,6 +200,17 @@ object Mp4Parsers extends ByteParsers {
     pos              <- currentPosition
     locationOpt      <- if (pos < initialPosition + size) nullEndedString.map(Some(_)) else pure(None)
   } yield DataEntryUrnBox(version, flags, name, locationOpt)
+
+  private def timeToSampleBoxBody: ByteParser[TimeToSampleBox] = for {
+    (version, _) <- fullBoxHeader
+    numEntries   <- u4
+    entries      <- timeToSampleEntry.timesU(numEntries)
+  } yield TimeToSampleBox(version, entries)
+
+  private def timeToSampleEntry: ByteParser[TimeToSampleEntry] = for {
+    sampleCount <- u4
+    sampleDelta <- u4
+  } yield TimeToSampleEntry(sampleCount, sampleDelta)
 
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)

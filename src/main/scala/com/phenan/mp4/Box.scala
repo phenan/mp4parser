@@ -142,6 +142,18 @@ case class DataReferenceBox (version: UnsignedByte, dataEntries: List[DataEntryB
   }
 }
 
+case class SampleTableBox () extends Box {
+  override def toHumanReadableString: String = "SampleTableBox()"
+}
+
+case class TimeToSampleEntry (sampleCount: UnsignedInt, sampleDelta: UnsignedInt) {
+  def toHumanReadableString: String = s"(sampleCount = $sampleCount, sampleDelta = $sampleDelta)"
+}
+
+case class TimeToSampleBox (version: UnsignedByte, entries: List[TimeToSampleEntry]) extends FullBox {
+  override def toHumanReadableString: String = s"TimeToSampleBox(version = $version, entries = ${entries.map(_.toHumanReadableString).mkString("{ ", ", ", " }")})"
+}
+
 case class UnknownBox (boxType: UnsignedInt, data: Array[Byte]) extends Box {
   override def toHumanReadableString: String = {
     s"UnknownBox(boxType = ${toIdentifierString(boxType)}(0x${boxType.toString(16)}), data = <byte array: ${data.length}bytes>)"
