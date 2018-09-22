@@ -85,16 +85,12 @@ object Mp4Parsers extends ByteParsers {
     data <- bytesUntil(initialPosition + size)
   } yield MediaDataBox(data)
 
-  private def movieHeaderBoxBody: ByteParser[MovieHeaderBox] = fullBoxHeader.flatMap { case (version, _) =>
-    if (version == 1) movieHeaderBoxBodyVer1
-    else movieHeaderBoxBodyVer0
-  }
-
-  private def movieHeaderBoxBodyVer0: ByteParser[MovieHeaderBox] = for {
-    creationTime     <- u4
-    modificationTime <- u4
+  private def movieHeaderBoxBody: ByteParser[MovieHeaderBox] = for {
+    (version, _)     <- fullBoxHeader
+    creationTime     <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
+    modificationTime <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     timeScale        <- u4
-    duration         <- u4
+    duration         <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     rate             <- s4
     volume           <- s2
     _                <- s2           // reserved
@@ -102,33 +98,15 @@ object Mp4Parsers extends ByteParsers {
     matrix           <- s4.times(9)
     _                <- s4.times(6)  // pre_defined
     nextTrackId      <- u4
-  } yield MovieHeaderBox(Unsigned(0), creationTime.toUnsignedLong, modificationTime.toUnsignedLong, timeScale, duration.toUnsignedLong, rate, volume, matrix.toArray, nextTrackId)
+  } yield MovieHeaderBox(version, creationTime, modificationTime, timeScale, duration, rate, volume, matrix.toArray, nextTrackId)
 
-  private def movieHeaderBoxBodyVer1: ByteParser[MovieHeaderBox] = for {
-    creationTime     <- u8
-    modificationTime <- u8
-    timeScale        <- u4
-    duration         <- u8
-    rate             <- s4
-    volume           <- s2
-    _                <- s2           // reserved
-    _                <- u4.times(2)  // reserved
-    matrix           <- s4.times(9)
-    _                <- s4.times(6)  // pre_defined
-    nextTrackId      <- u4
-  } yield MovieHeaderBox(Unsigned(1), creationTime, modificationTime, timeScale, duration, rate, volume, matrix.toArray, nextTrackId)
-
-  private def trackHeaderBoxBody: ByteParser[TrackHeaderBox] = fullBoxHeader.flatMap { case (version, flags) =>
-    if (version == 1) trackHeaderBoxBodyVer1(flags)
-    else trackHeaderBoxBodyVer0(flags)
-  }
-
-  private def trackHeaderBoxBodyVer0 (flags: UnsignedInt): ByteParser[TrackHeaderBox] = for {
-    creationTime     <- u4
-    modificationTime <- u4
+  private def trackHeaderBoxBody: ByteParser[TrackHeaderBox] = for {
+    (version, flags) <- fullBoxHeader
+    creationTime     <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
+    modificationTime <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     trackId          <- u4
     _                <- u4           // reserved
-    duration         <- u4
+    duration         <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     _                <- u4.times(2)  // reserved
     layer            <- s2
     alternateGroup   <- s2
@@ -137,23 +115,7 @@ object Mp4Parsers extends ByteParsers {
     matrix           <- s4.times(9)
     width            <- u4
     height           <- u4
-  } yield TrackHeaderBox(Unsigned(0), flags, creationTime.toUnsignedLong, modificationTime.toUnsignedLong, trackId, duration.toUnsignedLong, layer, alternateGroup, volume, matrix.toArray, width, height)
-
-  private def trackHeaderBoxBodyVer1 (flags: UnsignedInt): ByteParser[TrackHeaderBox] = for {
-    creationTime     <- u8
-    modificationTime <- u8
-    trackId          <- u4
-    _                <- u4           // reserved
-    duration         <- u8
-    _                <- u4.times(2)  // reserved
-    layer            <- s2
-    alternateGroup   <- s2
-    volume           <- s2
-    _                <- s2           // reserved
-    matrix           <- s4.times(9)
-    width            <- u4
-    height           <- u4
-  } yield TrackHeaderBox(Unsigned(1), flags, creationTime, modificationTime, trackId, duration, layer, alternateGroup, volume, matrix.toArray, width, height)
+  } yield TrackHeaderBox(version, flags, creationTime, modificationTime, trackId, duration, layer, alternateGroup, volume, matrix.toArray, width, height)
 
   private def trackReferenceTypeBoxHint (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[TrackReferenceTypeBoxHint] = for {
     trackIds <- u4.until(initialPosition + size)
@@ -163,28 +125,15 @@ object Mp4Parsers extends ByteParsers {
     trackIds <- u4.until(initialPosition + size)
   } yield TrackReferenceTypeBoxCdsc(trackIds)
 
-  private def mediaHeaderBoxBody: ByteParser[MediaHeaderBox] = fullBoxHeader.flatMap { case (version, _) =>
-    if (version == 1) mediaHeaderBoxBodyVer1
-    else mediaHeaderBoxBodyVer0
-  }
-
-  private def mediaHeaderBoxBodyVer0: ByteParser[MediaHeaderBox] = for {
-    creationTime     <- u4
-    modificationTime <- u4
+  private def mediaHeaderBoxBody: ByteParser[MediaHeaderBox] = for {
+    (version, _)     <- fullBoxHeader
+    creationTime     <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
+    modificationTime <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     timeScale        <- u4
-    duration         <- u4
+    duration         <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     language         <- s2
     _                <- s2           // pre_defined
-  } yield MediaHeaderBox(Unsigned(0), creationTime.toUnsignedLong, modificationTime.toUnsignedLong, timeScale, duration.toUnsignedLong, language)
-
-  private def mediaHeaderBoxBodyVer1: ByteParser[MediaHeaderBox] = for {
-    creationTime     <- u8
-    modificationTime <- u8
-    timeScale        <- u4
-    duration         <- u8
-    language         <- s2
-    _                <- s2           // pre_defined
-  } yield MediaHeaderBox(Unsigned(1), creationTime, modificationTime, timeScale, duration, language)
+  } yield MediaHeaderBox(version, creationTime, modificationTime, timeScale, duration, language)
 
   private def handlerBoxBody: ByteParser[HandlerBox] = for {
     (version, _) <- fullBoxHeader
