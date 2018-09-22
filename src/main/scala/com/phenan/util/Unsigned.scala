@@ -5,6 +5,11 @@ object Unsigned {
   def apply (shortValue: Short): UnsignedShort = new UnsignedShort(shortValue)
   def apply (intValue: Int): UnsignedInt = new UnsignedInt(intValue)
   def apply (longValue: Long): UnsignedLong = new UnsignedLong(longValue)
+
+  def unapply (arg: UnsignedByte): Option[Byte] = Some(arg.underlying)
+  def unapply (arg: UnsignedShort): Option[Short] = Some(arg.underlying)
+  def unapply (arg: UnsignedInt): Option[Int] = Some(arg.underlying)
+  def unapply (arg: UnsignedLong): Option[Long] = Some(arg.underlying)
 }
 
 class UnsignedByte (val underlying: Byte) extends AnyVal {
@@ -29,7 +34,10 @@ class UnsignedInt (val underlying: Int) extends AnyVal {
 
   def + (n: UnsignedInt): UnsignedInt = Unsigned(this.underlying + n.underlying)
   def < (n: UnsignedInt): Boolean = Integer.compareUnsigned(this.underlying, n.underlying) < 0
+  def & (n: UnsignedInt): UnsignedInt = Unsigned(this.underlying & n.underlying)
+
   def == (n: Long): Boolean = toLong == n
+  def > (n: Long): Boolean = toLong > n
 }
 
 class UnsignedLong (val underlying: Long) extends AnyVal {

@@ -1,52 +1,46 @@
 package com.phenan.mp4
 
 import java.io.File
-
 import com.phenan.util._
 
 import scala.util._
 
-import scala.collection.immutable.BitSet
-
 object Mp4Parsers extends ByteParsers {
   def all: ByteParser[List[Box]] = box.untilEoF
 
-  def box: ByteParser[Box] = for {
+
+  def box: ByteParser[Box] = makeBoxParser(boxBody)
+
+  private def makeBoxParser [B <: Box] (bodyParser: (UnsignedLong, UnsignedLong, UnsignedInt) => ByteParser[B]): ByteParser[B] = for {
     pos      <- currentPosition
     size     <- u4
     boxType  <- u4
-    boxSize  <- boxSize(size)
-    result   <- boxBody(pos, boxSize, boxType)
+    boxSize  <- if (size == 1) u8 else pure(size.toUnsignedLong)
+    result   <- bodyParser(pos, boxSize, boxType)
     children <- childBoxes(pos, boxSize)
   } yield {
     result.children = children
     result
   }
 
-  private def fullBox [B <: FullBox] (initialPosition: UnsignedLong, size: UnsignedLong, bodyParser: (UnsignedLong, UnsignedLong, UnsignedByte, BitSet) => ByteParser[B]): ByteParser[B] = for {
+  private def fullBoxHeader: ByteParser[(UnsignedByte, UnsignedInt)] = for {
     version <- u1
-    flags   <- bytes(Unsigned(3))
-    result  <- bodyParser(initialPosition, size, version, BitSetUtil.fromByteArray(flags))
-  } yield result
-
-  private def boxSize (size: UnsignedInt): ByteParser[UnsignedLong] = {
-    if (size == 1) u8
-    else pure(size.toUnsignedLong)
-  }
+    flags   <- u3
+  } yield (version, flags)
 
   private def boxBody (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[Box] = boxType.underlying match {
     case 0x66747970 =>  // 'ftyp'
-      fileTypeBox(initialPosition, size)
+      fileTypeBoxBody(initialPosition, size)
     case 0x6d6f6f76 =>  // 'moov'
       pure(MovieBox())
     case 0x6d646174 =>  // 'mdat'
-      mediaDataBox(initialPosition, size)
+      mediaDataBoxBody(initialPosition, size)
     case 0x6d766864 =>  // 'mvhd'
-      fullBox(initialPosition, size, movieHeaderBox)
+      movieHeaderBoxBody
     case 0x7472616b =>  // 'trak'
       pure(TrackBox())
     case 0x746b6864 =>  // 'tkhd'
-      fullBox(initialPosition, size, trackHeaderBox)
+      trackHeaderBoxBody
     case 0x74726566 =>  // 'tref'
       pure(TrackReferenceBox())
     case 0x68696e74 =>  // 'hint'
@@ -56,19 +50,23 @@ object Mp4Parsers extends ByteParsers {
     case 0x6d646961 =>  // 'mdia'
       pure(MediaBox())
     case 0x6d646864 =>  // 'mdhd'
-      fullBox(initialPosition, size, mediaHeaderBox)
+      mediaHeaderBoxBody
     case 0x68646c72 =>  // 'hdlr'
-      fullBox(initialPosition, size, handlerBox)
+      handlerBoxBody
     case 0x6d696e66 =>  // 'minf'
       pure(MediaInformationBox())
     case 0x766d6864 =>  // 'vmhd'
-      fullBox(initialPosition, size, videoMediaHeaderBox)
+      videoMediaHeaderBoxBody
     case 0x736d6864 =>  // 'smhd'
-      fullBox(initialPosition, size, soundMediaHeaderBox)
+      soundMediaHeaderBoxBody
     case 0x686d6864 =>  // 'hmhd'
-      fullBox(initialPosition, size, hintMediaHeaderBox)
+      hintMediaHeaderBoxBody
     case 0x6e6d6864 =>  // 'nmhd'
-      fullBox(initialPosition, size, nullMediaHeaderBox)
+      nullMediaHeaderBoxBody
+    case 0x64696e66 =>  // 'dinf'
+      pure(DataInformationBox())
+    case 0x64726566 =>  // 'dref'
+      dataReferenceBoxBody
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -77,22 +75,22 @@ object Mp4Parsers extends ByteParsers {
     box.until(initialPosition + size)
   }
 
-  private def fileTypeBox (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[FileTypeBox] = for {
+  private def fileTypeBoxBody (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[FileTypeBox] = for {
     majorBrand       <- u4
     minorVersion     <- u4
     compatibleBrands <- u4.until(initialPosition + size)
   } yield FileTypeBox(majorBrand, minorVersion, compatibleBrands)
 
-  private def mediaDataBox (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MediaDataBox] = for {
+  private def mediaDataBoxBody (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MediaDataBox] = for {
     data <- bytesUntil(initialPosition + size)
   } yield MediaDataBox(data)
 
-  private def movieHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[MovieHeaderBox] = {
-    if (version == 1) movieHeaderBoxVer1(initialPosition, size)
-    else movieHeaderBoxVer0(initialPosition, size)
+  private def movieHeaderBoxBody: ByteParser[MovieHeaderBox] = fullBoxHeader.flatMap { case (version, _) =>
+    if (version == 1) movieHeaderBoxBodyVer1
+    else movieHeaderBoxBodyVer0
   }
 
-  private def movieHeaderBoxVer0 (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MovieHeaderBox] = for {
+  private def movieHeaderBoxBodyVer0: ByteParser[MovieHeaderBox] = for {
     creationTime     <- u4
     modificationTime <- u4
     timeScale        <- u4
@@ -106,7 +104,7 @@ object Mp4Parsers extends ByteParsers {
     nextTrackId      <- u4
   } yield MovieHeaderBox(Unsigned(0), creationTime.toUnsignedLong, modificationTime.toUnsignedLong, timeScale, duration.toUnsignedLong, rate, volume, matrix.toArray, nextTrackId)
 
-  private def movieHeaderBoxVer1 (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MovieHeaderBox] = for {
+  private def movieHeaderBoxBodyVer1: ByteParser[MovieHeaderBox] = for {
     creationTime     <- u8
     modificationTime <- u8
     timeScale        <- u4
@@ -120,12 +118,12 @@ object Mp4Parsers extends ByteParsers {
     nextTrackId      <- u4
   } yield MovieHeaderBox(Unsigned(1), creationTime, modificationTime, timeScale, duration, rate, volume, matrix.toArray, nextTrackId)
 
-  private def trackHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[TrackHeaderBox] = {
-    if (version == 1) trackHeaderBoxVer1(initialPosition, size, flags)
-    else trackHeaderBoxVer0(initialPosition, size, flags)
+  private def trackHeaderBoxBody: ByteParser[TrackHeaderBox] = fullBoxHeader.flatMap { case (version, flags) =>
+    if (version == 1) trackHeaderBoxBodyVer1(flags)
+    else trackHeaderBoxBodyVer0(flags)
   }
 
-  private def trackHeaderBoxVer0 (initialPosition: UnsignedLong, size: UnsignedLong, flags: BitSet): ByteParser[TrackHeaderBox] = for {
+  private def trackHeaderBoxBodyVer0 (flags: UnsignedInt): ByteParser[TrackHeaderBox] = for {
     creationTime     <- u4
     modificationTime <- u4
     trackId          <- u4
@@ -141,7 +139,7 @@ object Mp4Parsers extends ByteParsers {
     height           <- u4
   } yield TrackHeaderBox(Unsigned(0), flags, creationTime.toUnsignedLong, modificationTime.toUnsignedLong, trackId, duration.toUnsignedLong, layer, alternateGroup, volume, matrix.toArray, width, height)
 
-  private def trackHeaderBoxVer1 (initialPosition: UnsignedLong, size: UnsignedLong, flags: BitSet): ByteParser[TrackHeaderBox] = for {
+  private def trackHeaderBoxBodyVer1 (flags: UnsignedInt): ByteParser[TrackHeaderBox] = for {
     creationTime     <- u8
     modificationTime <- u8
     trackId          <- u4
@@ -165,12 +163,12 @@ object Mp4Parsers extends ByteParsers {
     trackIds <- u4.until(initialPosition + size)
   } yield TrackReferenceTypeBoxCdsc(trackIds)
 
-  private def mediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[MediaHeaderBox] = {
-    if (version == 1) mediaHeaderBoxVer1(initialPosition, size)
-    else mediaHeaderBoxVer0(initialPosition, size)
+  private def mediaHeaderBoxBody: ByteParser[MediaHeaderBox] = fullBoxHeader.flatMap { case (version, _) =>
+    if (version == 1) mediaHeaderBoxBodyVer1
+    else mediaHeaderBoxBodyVer0
   }
 
-  private def mediaHeaderBoxVer0 (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MediaHeaderBox] = for {
+  private def mediaHeaderBoxBodyVer0: ByteParser[MediaHeaderBox] = for {
     creationTime     <- u4
     modificationTime <- u4
     timeScale        <- u4
@@ -179,7 +177,7 @@ object Mp4Parsers extends ByteParsers {
     _                <- s2           // pre_defined
   } yield MediaHeaderBox(Unsigned(0), creationTime.toUnsignedLong, modificationTime.toUnsignedLong, timeScale, duration.toUnsignedLong, language)
 
-  private def mediaHeaderBoxVer1 (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[MediaHeaderBox] = for {
+  private def mediaHeaderBoxBodyVer1: ByteParser[MediaHeaderBox] = for {
     creationTime     <- u8
     modificationTime <- u8
     timeScale        <- u4
@@ -188,40 +186,71 @@ object Mp4Parsers extends ByteParsers {
     _                <- s2           // pre_defined
   } yield MediaHeaderBox(Unsigned(1), creationTime, modificationTime, timeScale, duration, language)
 
-  private def handlerBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[HandlerBox] = for {
-    _           <- u4                // pre_defined
-    handlerType <- u4
-    _           <- u4.times(3)       // reserved
-    name        <- nullEndedString
+  private def handlerBoxBody: ByteParser[HandlerBox] = for {
+    (version, _) <- fullBoxHeader
+    _            <- u4               // pre_defined
+    handlerType  <- u4
+    _            <- u4.times(3)      // reserved
+    name         <- nullEndedString
   } yield HandlerBox(version, handlerType, name)
 
-  private def videoMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[VideoMediaHeaderBox] = for {
+  private def videoMediaHeaderBoxBody: ByteParser[VideoMediaHeaderBox] = for {
+    (version, _) <- fullBoxHeader
     graphicsMode <- u2
     opColor      <- u2.times(3)
   } yield VideoMediaHeaderBox(version, graphicsMode, opColor.toArray)
 
-  private def soundMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[SoundMediaHeaderBox] = for {
-    balance <- s2
-    _       <- u2   // reserved
+  private def soundMediaHeaderBoxBody: ByteParser[SoundMediaHeaderBox] = for {
+    (version, _) <- fullBoxHeader
+    balance      <- s2
+    _            <- u2   // reserved
   } yield SoundMediaHeaderBox(version, balance)
 
-  private def hintMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[HintMediaHeaderBox] = for {
-    maxPDUSize <- u2
-    avgPDUSize <- u2
-    maxBitRate <- u4
-    avgBitRate <- u4
-    _          <- u4  // reserved
+  private def hintMediaHeaderBoxBody: ByteParser[HintMediaHeaderBox] = for {
+    (version, _) <- fullBoxHeader
+    maxPDUSize   <- u2
+    avgPDUSize   <- u2
+    maxBitRate   <- u4
+    avgBitRate   <- u4
+    _            <- u4  // reserved
   } yield HintMediaHeaderBox(version, maxPDUSize, avgPDUSize, maxBitRate, avgBitRate)
 
-  private def nullMediaHeaderBox (initialPosition: UnsignedLong, size: UnsignedLong, version: UnsignedByte, flags: BitSet): ByteParser[NullMediaHeaderBox] = {
-    pure(NullMediaHeaderBox(version, flags))
+  private def nullMediaHeaderBoxBody: ByteParser[NullMediaHeaderBox] = {
+    for ((version, flags) <- fullBoxHeader) yield NullMediaHeaderBox(version, flags)
   }
+
+  private lazy val selfContainedFlag = Unsigned(0x000001)
+
+  private def dataReferenceBoxBody: ByteParser[DataReferenceBox] = for {
+    (version, _) <- fullBoxHeader
+    numEntries   <- u4
+    entries      <- dataEntryBox.timesU(numEntries)
+  } yield DataReferenceBox(version, entries)
+
+  private def dataEntryBox: ByteParser[DataEntryBox] = makeBoxParser {
+    case (_, _, Unsigned(0x75726c20)) => // 'url '
+      dataEntryUrlBoxBody
+    case (initialPosition, size, Unsigned(0x75726e20)) => // 'urn '
+      dataEntryUrnBoxBody(initialPosition, size)
+    case _ =>
+      throw new RuntimeException("fail to parse");
+  }
+
+  private def dataEntryUrlBoxBody: ByteParser[DataEntryUrlBox] = for {
+    (version, flags) <- fullBoxHeader
+    locationOpt      <- if ((flags & selfContainedFlag) == 0) nullEndedString.map(Some(_)) else pure(None)
+  } yield DataEntryUrlBox(version, flags, locationOpt)
+
+  private def dataEntryUrnBoxBody (initialPosition: UnsignedLong, size: UnsignedLong): ByteParser[DataEntryUrnBox] = for {
+    (version, flags) <- fullBoxHeader
+    name             <- nullEndedString
+    pos              <- currentPosition
+    locationOpt      <- if (pos < initialPosition + size) nullEndedString.map(Some(_)) else pure(None)
+  } yield DataEntryUrnBox(version, flags, name, locationOpt)
 
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)
   } yield UnknownBox(boxType, data)
-
-
 
   private def toHumanReadableString (boxes: List[Box]): String = boxes.map(toHumanReadableString).mkString("\n")
 

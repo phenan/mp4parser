@@ -11,12 +11,20 @@ class ByteParser [+T] (private val perform: ByteReader => Try[T]) {
     perform(r).flatMap(t => f(t).perform(r))
   })
 
-  def times (n: Int): ByteParser[List[T]] = new ByteParser[List[T]]({ r =>
+  def times (n: Int): ByteParser[List[T]] = times(n.toLong)
+
+  def times (n: Long): ByteParser[List[T]] = new ByteParser[List[T]]({ r =>
     if (n > 0) for {
       head <- perform(r)
       tail <- times(n - 1).perform(r)
     } yield head :: tail
     else Success(Nil)
+  })
+
+  def timesU (n: UnsignedInt): ByteParser[List[T]] = times(n.toLong)
+
+  def filter (f: T => Boolean): ByteParser[T] = new ByteParser[T]({ r =>
+    perform(r).filter(f)
   })
 
   def until (position: UnsignedLong): ByteParser[List[T]] = new ByteParser[List[T]]({ r =>

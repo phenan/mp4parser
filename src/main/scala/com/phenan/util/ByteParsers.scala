@@ -10,6 +10,12 @@ trait ByteParsers {
   val u4: ByteParser[UnsignedInt] = new ByteParser[UnsignedInt](_.u4)
   val u8: ByteParser[UnsignedLong] = new ByteParser[UnsignedLong](_.u8)
 
+  val u3: ByteParser[UnsignedInt] = new ByteParser[UnsignedInt]({ r =>
+    r.bytes(Unsigned(3)).map { bs =>
+      Unsigned(bs(0) << 16 | bs(1) << 8 | bs(2))
+    }
+  })
+
   val s2: ByteParser[Short] = new ByteParser[Short](_.s2)
   val s4: ByteParser[Int] = new ByteParser[Int](_.s4)
 

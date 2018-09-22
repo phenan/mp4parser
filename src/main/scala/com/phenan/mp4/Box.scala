@@ -3,8 +3,6 @@ package com.phenan.mp4
 import com.phenan.util._
 import IdentifierUtil._
 
-import scala.collection.immutable.BitSet
-
 sealed trait Box {
   def toHumanReadableString: String
 
@@ -44,12 +42,12 @@ case class TrackBox () extends Box {
 }
 
 case class TrackHeaderBox
-(version: UnsignedByte, flags: BitSet, creationTime: UnsignedLong, modificationTime: UnsignedLong,
+(version: UnsignedByte, flags: UnsignedInt, creationTime: UnsignedLong, modificationTime: UnsignedLong,
  trackId: UnsignedInt, duration: UnsignedLong, layer: Short, alternateGroup: Short, volume: Short,
  matrix: Array[Int], width: UnsignedInt, height: UnsignedInt) extends FullBox
 {
   override def toHumanReadableString: String = {
-    s"TrackHeaderBox(version = $version, flags = ${BitSetUtil.toBitArrayString(flags)}, creationTime = $creationTime, modificationTime = $modificationTime, trackId = $trackId, duration = $duration, layer = $layer, alternateGroup = $alternateGroup, volume = $volume, " +
+    s"TrackHeaderBox(version = $version, flags = 0x${flags.toString(16)}, creationTime = $creationTime, modificationTime = $modificationTime, trackId = $trackId, duration = $duration, layer = $layer, alternateGroup = $alternateGroup, volume = $volume, " +
     s"matrix = ((${matrix(0)}, ${matrix(1)}, ${matrix(2)}), (${matrix(3)}, ${matrix(4)}, ${matrix(5)}), (${matrix(6)}, ${matrix(7)}, ${matrix(8)})), width = $width, height = $height)"
   }
 }
@@ -112,14 +110,40 @@ case class HintMediaHeaderBox (version: UnsignedByte, maxPDUSize: UnsignedShort,
   }
 }
 
-case class NullMediaHeaderBox (version: UnsignedByte, flags: BitSet) extends FullBox {
+case class NullMediaHeaderBox (version: UnsignedByte, flags: UnsignedInt) extends FullBox {
   override def toHumanReadableString: String = {
-    s"NullMediaHeaderBox(version = $version, flags = ${BitSetUtil.toBitArrayString(flags)})"
+    s"NullMediaHeaderBox(version = $version, flags = 0x${flags.toString(16)})"
+  }
+}
+
+case class DataInformationBox () extends Box {
+  override def toHumanReadableString: String = "DataInformationBox()"
+}
+
+sealed trait DataEntryBox extends FullBox
+
+case class DataEntryUrlBox (version: UnsignedByte, flags: UnsignedInt, location: Option[String]) extends DataEntryBox {
+  override def toHumanReadableString: String = location match {
+    case Some(loc) => s"DataEntryUrlBox(version = $version, flags = 0x${flags.toString(16)}, location = $loc)"
+    case None => s"DataEntryUrlBox(version = $version, flags = 0x${flags.toString(16)})"
+  }
+}
+
+case class DataEntryUrnBox (version: UnsignedByte, flags: UnsignedInt, name: String, location: Option[String]) extends DataEntryBox {
+  override def toHumanReadableString: String = location match {
+    case Some(loc) => s"DataEntryUrnBox(version = $version, flags = 0x${flags.toString(16)}, name = $name, location = $loc)"
+    case None => s"DataEntryUrnBox(version = $version, flags = 0x${flags.toString(16)}, name = $name)"
+  }
+}
+
+case class DataReferenceBox (version: UnsignedByte, dataEntries: List[DataEntryBox]) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"DataReferenceBox(version = $version, dataEntries = ${dataEntries.map(_.toHumanReadableString).mkString("{ ", ", ", " }")})"
   }
 }
 
 case class UnknownBox (boxType: UnsignedInt, data: Array[Byte]) extends Box {
   override def toHumanReadableString: String = {
-    s"UnknownBox(boxType = ${toIdentifierString(boxType)}($boxType), data = <byte array: ${data.length}bytes>)"
+    s"UnknownBox(boxType = ${toIdentifierString(boxType)}(0x${boxType.toString(16)}), data = <byte array: ${data.length}bytes>)"
   }
 }
