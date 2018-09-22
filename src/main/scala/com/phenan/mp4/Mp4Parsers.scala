@@ -6,10 +6,9 @@ import com.phenan.util._
 import scala.util._
 
 object Mp4Parsers extends ByteParsers {
-  def all: ByteParser[List[Box]] = box.untilEoF
+  lazy val all: ByteParser[List[Box]] = box.untilEoF
 
-
-  def box: ByteParser[Box] = makeBoxParser(boxBody)
+  lazy val box: ByteParser[Box] = makeBoxParser(boxBody)
 
   private def makeBoxParser [B <: Box] (bodyParser: (UnsignedLong, UnsignedLong, UnsignedInt) => ByteParser[B]): ByteParser[B] = for {
     pos      <- currentPosition
@@ -23,7 +22,7 @@ object Mp4Parsers extends ByteParsers {
     result
   }
 
-  private def fullBoxHeader: ByteParser[(UnsignedByte, UnsignedInt)] = for {
+  private lazy val fullBoxHeader: ByteParser[(UnsignedByte, UnsignedInt)] = for {
     version <- u1
     flags   <- u3
   } yield (version, flags)
@@ -71,6 +70,8 @@ object Mp4Parsers extends ByteParsers {
       pure(SampleTableBox())
     case 0x73747473 =>  // 'stts'
       timeToSampleBoxBody
+    case 0x63747473 =>  // 'ctts'
+      compositionOffsetBoxBody
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -89,7 +90,7 @@ object Mp4Parsers extends ByteParsers {
     data <- bytesUntil(initialPosition + size)
   } yield MediaDataBox(data)
 
-  private def movieHeaderBoxBody: ByteParser[MovieHeaderBox] = for {
+  private lazy val movieHeaderBoxBody: ByteParser[MovieHeaderBox] = for {
     (version, _)     <- fullBoxHeader
     creationTime     <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     modificationTime <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
@@ -104,7 +105,7 @@ object Mp4Parsers extends ByteParsers {
     nextTrackId      <- u4
   } yield MovieHeaderBox(version, creationTime, modificationTime, timeScale, duration, rate, volume, matrix.toArray, nextTrackId)
 
-  private def trackHeaderBoxBody: ByteParser[TrackHeaderBox] = for {
+  private lazy val trackHeaderBoxBody: ByteParser[TrackHeaderBox] = for {
     (version, flags) <- fullBoxHeader
     creationTime     <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     modificationTime <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
@@ -129,7 +130,7 @@ object Mp4Parsers extends ByteParsers {
     trackIds <- u4.until(initialPosition + size)
   } yield TrackReferenceTypeBoxCdsc(trackIds)
 
-  private def mediaHeaderBoxBody: ByteParser[MediaHeaderBox] = for {
+  private lazy val mediaHeaderBoxBody: ByteParser[MediaHeaderBox] = for {
     (version, _)     <- fullBoxHeader
     creationTime     <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
     modificationTime <- if (version == 1) u8 else u4.map(_.toUnsignedLong)
@@ -139,7 +140,7 @@ object Mp4Parsers extends ByteParsers {
     _                <- s2           // pre_defined
   } yield MediaHeaderBox(version, creationTime, modificationTime, timeScale, duration, language)
 
-  private def handlerBoxBody: ByteParser[HandlerBox] = for {
+  private lazy val handlerBoxBody: ByteParser[HandlerBox] = for {
     (version, _) <- fullBoxHeader
     _            <- u4               // pre_defined
     handlerType  <- u4
@@ -147,19 +148,19 @@ object Mp4Parsers extends ByteParsers {
     name         <- nullEndedString
   } yield HandlerBox(version, handlerType, name)
 
-  private def videoMediaHeaderBoxBody: ByteParser[VideoMediaHeaderBox] = for {
+  private lazy val videoMediaHeaderBoxBody: ByteParser[VideoMediaHeaderBox] = for {
     (version, _) <- fullBoxHeader
     graphicsMode <- u2
     opColor      <- u2.times(3)
   } yield VideoMediaHeaderBox(version, graphicsMode, opColor.toArray)
 
-  private def soundMediaHeaderBoxBody: ByteParser[SoundMediaHeaderBox] = for {
+  private lazy val soundMediaHeaderBoxBody: ByteParser[SoundMediaHeaderBox] = for {
     (version, _) <- fullBoxHeader
     balance      <- s2
     _            <- u2   // reserved
   } yield SoundMediaHeaderBox(version, balance)
 
-  private def hintMediaHeaderBoxBody: ByteParser[HintMediaHeaderBox] = for {
+  private lazy val hintMediaHeaderBoxBody: ByteParser[HintMediaHeaderBox] = for {
     (version, _) <- fullBoxHeader
     maxPDUSize   <- u2
     avgPDUSize   <- u2
@@ -168,19 +169,19 @@ object Mp4Parsers extends ByteParsers {
     _            <- u4  // reserved
   } yield HintMediaHeaderBox(version, maxPDUSize, avgPDUSize, maxBitRate, avgBitRate)
 
-  private def nullMediaHeaderBoxBody: ByteParser[NullMediaHeaderBox] = for {
+  private lazy val nullMediaHeaderBoxBody: ByteParser[NullMediaHeaderBox] = for {
     (version, flags) <- fullBoxHeader
   } yield NullMediaHeaderBox(version, flags)
 
   private lazy val selfContainedFlag = Unsigned(0x000001)
 
-  private def dataReferenceBoxBody: ByteParser[DataReferenceBox] = for {
+  private lazy val dataReferenceBoxBody: ByteParser[DataReferenceBox] = for {
     (version, _) <- fullBoxHeader
     numEntries   <- u4
     entries      <- dataEntryBox.timesU(numEntries)
   } yield DataReferenceBox(version, entries)
 
-  private def dataEntryBox: ByteParser[DataEntryBox] = makeBoxParser {
+  private lazy val dataEntryBox: ByteParser[DataEntryBox] = makeBoxParser {
     case (_, _, Unsigned(0x75726c20)) => // 'url '
       dataEntryUrlBoxBody
     case (initialPosition, size, Unsigned(0x75726e20)) => // 'urn '
@@ -189,7 +190,7 @@ object Mp4Parsers extends ByteParsers {
       throw new RuntimeException("fail to parse");
   }
 
-  private def dataEntryUrlBoxBody: ByteParser[DataEntryUrlBox] = for {
+  private lazy val dataEntryUrlBoxBody: ByteParser[DataEntryUrlBox] = for {
     (version, flags) <- fullBoxHeader
     locationOpt      <- if ((flags & selfContainedFlag) == 0) nullEndedString.map(Some(_)) else pure(None)
   } yield DataEntryUrlBox(version, flags, locationOpt)
@@ -201,16 +202,27 @@ object Mp4Parsers extends ByteParsers {
     locationOpt      <- if (pos < initialPosition + size) nullEndedString.map(Some(_)) else pure(None)
   } yield DataEntryUrnBox(version, flags, name, locationOpt)
 
-  private def timeToSampleBoxBody: ByteParser[TimeToSampleBox] = for {
+  private lazy val timeToSampleBoxBody: ByteParser[TimeToSampleBox] = for {
     (version, _) <- fullBoxHeader
     numEntries   <- u4
     entries      <- timeToSampleEntry.timesU(numEntries)
   } yield TimeToSampleBox(version, entries)
 
-  private def timeToSampleEntry: ByteParser[TimeToSampleEntry] = for {
+  private lazy val timeToSampleEntry: ByteParser[TimeToSampleEntry] = for {
     sampleCount <- u4
     sampleDelta <- u4
   } yield TimeToSampleEntry(sampleCount, sampleDelta)
+
+  private lazy val compositionOffsetBoxBody: ByteParser[CompositionOffsetBox] = for {
+    (version, _) <- fullBoxHeader
+    numEntries   <- u4
+    entries      <- compositionOffsetEntry.timesU(numEntries)
+  } yield CompositionOffsetBox(version, entries)
+
+  private lazy val compositionOffsetEntry: ByteParser[CompositionOffsetEntry] = for {
+    sampleCount  <- u4
+    sampleOffset <- u4
+  } yield CompositionOffsetEntry(sampleCount, sampleOffset)
 
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)
