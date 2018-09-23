@@ -16,6 +16,8 @@ class UnsignedByte (val underlying: Byte) extends AnyVal {
   override def toString: String = toInt.toString
 
   def toInt: Int = java.lang.Byte.toUnsignedInt(underlying)
+  def toUnsignedInt: UnsignedInt = Unsigned(toInt)
+  def toUnsignedLong: UnsignedLong = Unsigned(toInt)
 
   def == (n: Int): Boolean = toInt == n
 }
@@ -47,4 +49,6 @@ class UnsignedLong (val underlying: Long) extends AnyVal {
   def + (n: UnsignedLong): UnsignedLong = Unsigned(this.underlying + n.underlying)
   def - (n: UnsignedLong): UnsignedLong = Unsigned(this.underlying - n.underlying)
   def < (n: UnsignedLong): Boolean = java.lang.Long.compareUnsigned(this.underlying, n.underlying) < 0
+
+  def == (n: UnsignedLong): Boolean = underlying == n.underlying
 }

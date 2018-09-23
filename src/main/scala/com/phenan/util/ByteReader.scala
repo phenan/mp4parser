@@ -14,10 +14,12 @@ class ByteReader private (in: DataInputStream) {
   def s2: Try[Short] = read(Unsigned(2L), in.readShort())
   def s4: Try[Int] = read(Unsigned(4L), in.readInt())
 
-  def bytes(size: UnsignedLong): Try[Array[Byte]] = {
+  def bytes(size: UnsignedLong): Try[Array[Byte]] = Try {
     // Note: Java only supports array size up to Int.MaxValue
     val bs = new Array[Byte](size.underlying.toInt)
-    read(size, in.read(bs)).map(_ => bs)
+    in.read(bs)
+    pos = pos + size
+    bs
   }
 
   def readNullEndedString: Try[String] = Try(readNullEndedString(ArrayBuffer.empty))

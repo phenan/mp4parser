@@ -4,7 +4,11 @@ import com.phenan.util._
 import IdentifierUtil._
 
 sealed trait Box {
-  def toHumanReadableString: String
+  def toPrettyString: String = {
+    if (children.isEmpty) toHumanReadableString
+    else toHumanReadableString + "\n  " + children.map(_.toPrettyString).mkString("\n").replaceAll("\n", "\n  ")
+  }
+  protected[this] def toHumanReadableString: String
 
   var children: List[Box] = Nil
 }
@@ -120,6 +124,12 @@ case class DataInformationBox () extends Box {
   override def toHumanReadableString: String = "DataInformationBox()"
 }
 
+case class DataReferenceBox (version: UnsignedByte, dataEntries: List[DataEntryBox]) extends FullBox {
+  override def toHumanReadableString: String = {
+    s"DataReferenceBox(version = $version, dataEntries = ${dataEntries.map(_.toPrettyString).mkString("{ ", ", ", " }")})"
+  }
+}
+
 sealed trait DataEntryBox extends FullBox
 
 case class DataEntryUrlBox (version: UnsignedByte, flags: UnsignedInt, location: Option[String]) extends DataEntryBox {
@@ -133,12 +143,6 @@ case class DataEntryUrnBox (version: UnsignedByte, flags: UnsignedInt, name: Str
   override def toHumanReadableString: String = location match {
     case Some(loc) => s"DataEntryUrnBox(version = $version, flags = 0x${flags.toString(16)}, name = $name, location = $loc)"
     case None => s"DataEntryUrnBox(version = $version, flags = 0x${flags.toString(16)}, name = $name)"
-  }
-}
-
-case class DataReferenceBox (version: UnsignedByte, dataEntries: List[DataEntryBox]) extends FullBox {
-  override def toHumanReadableString: String = {
-    s"DataReferenceBox(version = $version, dataEntries = ${dataEntries.map(_.toHumanReadableString).mkString("{ ", ", ", " }")})"
   }
 }
 
@@ -160,6 +164,40 @@ case class CompositionOffsetEntry (sampleCount: UnsignedInt, sampleOffset: Unsig
 
 case class CompositionOffsetBox (version: UnsignedByte, entries: List[CompositionOffsetEntry]) extends FullBox {
   override def toHumanReadableString: String = s"CompositionOffsetBox(version = $version, entries = ${entries.map(_.toHumanReadableString).mkString("{ ", ", ", " }")})"
+}
+
+case class SampleDescriptionBox (version: UnsignedByte, entries: List[SampleEntry]) extends FullBox {
+  override def toHumanReadableString: String = s"SampleDescriptionBox(version = $version, entries = {\n  ${entries.map(_.toPrettyString).mkString(",\n").replaceAll("\n", "\n  ")}\n})"
+}
+
+sealed trait SampleEntry extends Box {
+  def dataReferenceIndex: UnsignedShort
+}
+
+case class HintSampleEntry (dataReferenceIndex: UnsignedShort, protocol: UnsignedInt, data: Array[Byte]) extends SampleEntry {
+  override def toHumanReadableString: String = s"HintSampleEntry(dataReferenceIndex = $dataReferenceIndex, protocol = ${toIdentifierString(protocol)}, data = <byte array: ${data.length}bytes>)"
+}
+
+case class VisualSampleEntry
+(dataReferenceIndex: UnsignedShort, codingName: UnsignedInt,
+ width: UnsignedShort, height: UnsignedShort, horizontalResolution: UnsignedInt, verticalResolution: UnsignedInt,
+ frameCount: UnsignedShort, compressorName: String, depth: UnsignedShort) extends SampleEntry
+{
+  override def toHumanReadableString: String = {
+    s"VisualSampleEntry(dataReferenceIndex = $dataReferenceIndex, codingName = ${toIdentifierString(codingName)}, " +
+    s"width = $width, height = $height, horizontalResolution = $horizontalResolution, vertialResolution = $verticalResolution, " +
+    s"frameCount = $frameCount, compressorName = $compressorName, depth = $depth)"
+  }
+}
+
+case class AudioSampleEntry (dataReferenceIndex: UnsignedShort, codingName: UnsignedInt, channelCount: UnsignedShort, sampleSize: UnsignedShort, sampleRate: UnsignedInt) extends SampleEntry {
+  override def toHumanReadableString: String = {
+    s"AudioSampleEntry(dataReferenceIndex = $dataReferenceIndex, codingName = ${toIdentifierString(codingName)}, channelCount = $channelCount, sampleSize = $sampleSize, sampleRate = $sampleRate)"
+  }
+}
+
+case class UnknownSampleEntry (dataReferenceIndex: UnsignedShort, format: UnsignedInt, data: Array[Byte]) extends SampleEntry {
+  override def toHumanReadableString: String = s"UnknownSampleEntry(dataReferenceIndex = $dataReferenceIndex, format = ${toIdentifierString(format)}(0x${format.toString(16)}), data = <byte array: ${data.length}bytes>)"
 }
 
 case class UnknownBox (boxType: UnsignedInt, data: Array[Byte]) extends Box {

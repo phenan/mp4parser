@@ -72,6 +72,8 @@ object Mp4Parsers extends ByteParsers {
       timeToSampleBoxBody
     case 0x63747473 =>  // 'ctts'
       compositionOffsetBoxBody
+    case 0x73747364 =>  // 'stsd'
+      sampleDescriptionBoxBody
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -224,20 +226,92 @@ object Mp4Parsers extends ByteParsers {
     sampleOffset <- u4
   } yield CompositionOffsetEntry(sampleCount, sampleOffset)
 
+  private lazy val sampleDescriptionBoxBody: ByteParser[SampleDescriptionBox] = for {
+    (version, _) <- fullBoxHeader
+    entryCount   <- u4
+    entries      <- sampleEntry.timesU(entryCount)
+  } yield SampleDescriptionBox(version, entries)
+
+  private lazy val sampleEntry: ByteParser[SampleEntry] = makeBoxParser { (initialPosition, size, boxType) =>
+    for {
+      _                  <- u1.times(6)  // reserved
+      dataReferenceIndex <- u2
+      entry              <- sampleEntryBody(initialPosition, size, boxType, dataReferenceIndex)
+    } yield entry
+  }
+
+  private def sampleEntryBody (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt, dataReferenceIndex: UnsignedShort): ByteParser[SampleEntry] = boxType.underlying match {
+    case 0x72747020     // 'rtp '
+         | 0x73727470   // 'srtp'
+    => hintSampleEntry(initialPosition, size, boxType, dataReferenceIndex)
+    case 0x61766331     // 'avc1'
+         | 0x61766332   // 'avc2'
+         | 0x61766333   // 'avc3'
+         | 0x61766334   // 'avc4'
+         | 0x656e6376   // 'encv'
+         | 0x6170636e   // 'apcn'
+         | 0x6d703476   // 'mp4v'
+         | 0x73323633   // 's263'
+         | 0x64766865   // 'dvhe'
+         | 0x64766176   // 'dvav'
+         | 0x68657631   // 'hev1'
+         | 0x68766331   // 'hvc1'
+    => visualSampleEntry(boxType, dataReferenceIndex)
+    case 0x73616d72     // 'samr'
+         | 0x73617762   // 'sawb'
+         | 0x6d703461   // 'mp4a'
+         | 0x64726d73   // 'drms'
+         | 0x6f776d61   // 'owma'
+         | 0x61632d33   // 'ac-3'
+         | 0x65632d33   // 'ec-3'
+         | 0x656e6361   // 'enca'
+         | 0x736f7774   // 'sowt'
+    => audioSampleEntry(boxType, dataReferenceIndex)
+    case _
+    => unknownSampleEntry(initialPosition, size, boxType, dataReferenceIndex)
+  }
+
+  private def hintSampleEntry (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt, dataReferenceIndex: UnsignedShort): ByteParser[HintSampleEntry] = for {
+    data <- bytesUntil(initialPosition + size)
+  } yield HintSampleEntry(dataReferenceIndex, boxType, data)
+
+  private def visualSampleEntry (boxType: UnsignedInt, dataReferenceIndex: UnsignedShort): ByteParser[VisualSampleEntry] = for {
+    _              <- u2           // pre_defined
+    _              <- u2           // reserved
+    _              <- u4.times(3)  // pre_defined
+    width          <- u2
+    height         <- u2
+    hResolution    <- u4
+    vResolution    <- u4
+    _              <- u4           // reserved
+    frameCount     <- u2
+    nameLength     <- u1
+    compressorName <- bytes(nameLength.toUnsignedLong).map(new String(_))
+    _              <- bytes(Unsigned(31L) - nameLength.toUnsignedLong)     // padding
+    depth          <- u2
+    _              <- u2           // pre_defined
+  } yield VisualSampleEntry(dataReferenceIndex, boxType, width, height, hResolution, vResolution, frameCount, compressorName, depth)
+
+  private def audioSampleEntry (boxType: UnsignedInt, dataReferenceIndex: UnsignedShort): ByteParser[AudioSampleEntry] = for {
+    _            <- u4.times(2)    // reserved
+    channelCount <- u2
+    sampleSize   <- u2
+    _            <- u2             // pre_defined
+    _            <- u2             // reserved
+    sampleRate   <- u4
+  } yield AudioSampleEntry(dataReferenceIndex, boxType, channelCount, sampleSize, sampleRate)
+
+  private def unknownSampleEntry (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt, dataReferenceIndex: UnsignedShort): ByteParser[UnknownSampleEntry] = for {
+    data <- bytesUntil(initialPosition + size)
+  } yield UnknownSampleEntry(dataReferenceIndex, boxType, data)
+
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)
   } yield UnknownBox(boxType, data)
 
-  private def toHumanReadableString (boxes: List[Box]): String = boxes.map(toHumanReadableString).mkString("\n")
-
-  private def toHumanReadableString (box: Box): String = {
-    if (box.children.isEmpty) box.toHumanReadableString
-    else box.toHumanReadableString + "\n  " + toHumanReadableString(box.children).replaceAll("\n", "\n  ")
-  }
-
   def main (args: Array[String]): Unit = {
     all.parse(new File("test.mp4")) match {
-      case Success(v) => println(toHumanReadableString(v))
+      case Success(v) => println(v.map(_.toPrettyString).mkString("\n"))
       case Failure(e) => e.printStackTrace()
     }
   }
