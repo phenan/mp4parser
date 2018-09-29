@@ -1,6 +1,6 @@
 package com.phenan.util
 
-import scala.util.Success
+import scala.util._
 
 trait ByteParsers {
   def pure [T] (n: => T): ByteParser[T] = new ByteParser[T](_ => Success(n))
@@ -29,5 +29,6 @@ trait ByteParsers {
     if (r.currentPosition < pos) r.bytes(pos - r.currentPosition)
     else Success(Array.empty)
   })
+
   val bytesUntilEoF: ByteParser[Array[Byte]] = new ByteParser[Array[Byte]](_.readUntilEoF)
 }

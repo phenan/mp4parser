@@ -2,6 +2,7 @@ package com.phenan.util
 
 import java.io.{EOFException, File}
 
+import scala.annotation.tailrec
 import scala.util._
 
 class ByteParser [+T] (private val perform: ByteReader => Try[T]) {
@@ -13,15 +14,21 @@ class ByteParser [+T] (private val perform: ByteReader => Try[T]) {
 
   def times (n: Int): ByteParser[List[T]] = times(n.toLong)
 
+  def timesU (n: UnsignedInt): ByteParser[List[T]] = times(n.toLong)
+
   def times (n: Long): ByteParser[List[T]] = new ByteParser[List[T]]({ r =>
-    if (n > 0) for {
-      head <- perform(r)
-      tail <- times(n - 1).perform(r)
-    } yield head :: tail
-    else Success(Nil)
+    timesPerform(n, r, Nil)
   })
 
-  def timesU (n: UnsignedInt): ByteParser[List[T]] = times(n.toLong)
+  @tailrec
+  private def timesPerform [R >: T] (n: Long, reader: ByteReader, result: List[R]): Try[List[R]] = {
+    if (n > 0) perform(reader) match {
+      case Success(t) => timesPerform(n - 1, reader, t :: result)
+      case Failure(e) => Failure(e)
+    }
+    else Success(result.reverse)
+  }
+
 
   def filter (f: T => Boolean): ByteParser[T] = new ByteParser[T]({ r =>
     perform(r).filter(f)

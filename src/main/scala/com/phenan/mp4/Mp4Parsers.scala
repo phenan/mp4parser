@@ -74,6 +74,8 @@ object Mp4Parsers extends ByteParsers {
       compositionOffsetBoxBody
     case 0x73747364 =>  // 'stsd'
       sampleDescriptionBoxBody
+    case 0x7374737a =>  // 'stsz'
+      sampleSizeBoxBody
     case _ =>
       unknownBox(initialPosition, size, boxType)
   }
@@ -304,6 +306,13 @@ object Mp4Parsers extends ByteParsers {
   private def unknownSampleEntry (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt, dataReferenceIndex: UnsignedShort): ByteParser[UnknownSampleEntry] = for {
     data <- bytesUntil(initialPosition + size)
   } yield UnknownSampleEntry(dataReferenceIndex, boxType, data)
+
+  private lazy val sampleSizeBoxBody: ByteParser[SampleSizeBox] = for {
+    (version, _) <- fullBoxHeader
+    sampleSize   <- u4
+    sampleCount  <- u4
+    entries      <- if (sampleSize == 0) u4.timesU(sampleCount) else pure(Nil)
+  } yield SampleSizeBox(version, sampleSize, sampleCount, entries)
 
   private def unknownBox (initialPosition: UnsignedLong, size: UnsignedLong, boxType: UnsignedInt): ByteParser[UnknownBox] = for {
     data <- bytesUntil(initialPosition + size)

@@ -200,6 +200,10 @@ case class UnknownSampleEntry (dataReferenceIndex: UnsignedShort, format: Unsign
   override def toHumanReadableString: String = s"UnknownSampleEntry(dataReferenceIndex = $dataReferenceIndex, format = ${toIdentifierString(format)}(0x${format.toString(16)}), data = <byte array: ${data.length}bytes>)"
 }
 
+case class SampleSizeBox (version: UnsignedByte, sampleSize: UnsignedInt, sampleCount: UnsignedInt, entries: List[UnsignedInt]) extends FullBox {
+  override def toHumanReadableString: String = s"SampleSizeBox(version = $version, sampleSize = $sampleSize, sampleCount = $sampleCount, entries = ${entries.mkString("{ ", ", ", " }")})"
+}
+
 case class UnknownBox (boxType: UnsignedInt, data: Array[Byte]) extends Box {
   override def toHumanReadableString: String = {
     s"UnknownBox(boxType = ${toIdentifierString(boxType)}(0x${boxType.toString(16)}), data = <byte array: ${data.length}bytes>)"
